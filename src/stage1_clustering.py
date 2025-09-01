@@ -3,7 +3,7 @@ import json
 import os
 from pathlib import Path
 from typing import List, Dict, Any, Tuple
-import openai
+from openai import AsyncOpenAI
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.cluster import KMeans
 from sklearn.metrics.pairwise import cosine_similarity
@@ -15,10 +15,11 @@ class WithinArticleTopicClustering:
         self.config = Config()
         self.config.validate()
         
-        # Set OpenAI API key
-        openai.api_key = self.config.OPENAI_API_KEY
-        if self.config.OPENAI_ORGANIZATION:
-            openai.organization = self.config.OPENAI_ORGANIZATION
+        # Set OpenAI client
+        self.client = AsyncOpenAI(
+            api_key=self.config.OPENAI_API_KEY,
+            organization=self.config.OPENAI_ORGANIZATION if self.config.OPENAI_ORGANIZATION else None
+        )
     
     async def extract_topics_with_gpt(self, article_content: str, filename: str) -> Dict[str, Any]:
         """Use GPT-4 to extract key topics from an article"""
@@ -51,8 +52,8 @@ Respond in JSON format:
 """
 
         try:
-            response = await openai.ChatCompletion.acreate(
-                model="gpt-4",
+            response = await self.client.chat.completions.create(
+                model="gpt-4o-mini",
                 messages=[
                     {"role": "system", "content": "You are an expert qualitative researcher analyzing interview data. Provide accurate, insightful topic extraction in valid JSON format."},
                     {"role": "user", "content": prompt}

@@ -3,8 +3,9 @@ import os
 from pathlib import Path
 from typing import List, Dict, Any
 from lightrag import LightRAG, QueryParam
-from lightrag.llm import openai_complete_if_cache, openai_embedding
-import openai
+from lightrag.llm.openai import openai_complete_if_cache, openai_embed
+from lightrag.kg.shared_storage import initialize_pipeline_status
+# import openai  # Not needed anymore with wrapped functions
 from config import Config
 
 class LightRAGKnowledgeBase:
@@ -12,23 +13,51 @@ class LightRAGKnowledgeBase:
         self.config = Config()
         self.config.validate()
         
-        # Set OpenAI API key
-        openai.api_key = self.config.OPENAI_API_KEY
-        if self.config.OPENAI_ORGANIZATION:
-            openai.organization = self.config.OPENAI_ORGANIZATION
+        # OpenAI configuration is handled in the wrapped functions below
         
         # Initialize LightRAG
         self.rag = None
+        
+# Create proper wrapper function for LightRAG's calling pattern
+        async def lightrag_llm_wrapper(*args, **kwargs):
+            # LightRAG calls with prompt as first positional arg and config in kwargs
+            if len(args) >= 1:
+                prompt = args[0]
+                system_prompt = args[1] if len(args) > 1 else kwargs.get('system_prompt')
+            else:
+                prompt = kwargs.get('prompt')
+                system_prompt = kwargs.get('system_prompt')
+                
+            if not prompt:
+                raise ValueError(f"No prompt provided. Args: {args}, Kwargs: {kwargs}")
+            
+            # Get model from LightRAG configuration or use default
+            model = kwargs.get('model', 'gpt-4o-mini')
+            
+            return await openai_complete_if_cache(
+                model=model,
+                prompt=prompt,
+                system_prompt=system_prompt,
+                api_key=self.config.OPENAI_API_KEY,
+                **{k: v for k, v in kwargs.items() if k not in ['model', 'prompt', 'system_prompt', 'api_key']}
+            )
+        
+        self.lightrag_llm_wrapper = lightrag_llm_wrapper
         
     async def initialize_rag(self):
         """Initialize LightRAG instance"""
         try:
             self.rag = LightRAG(
                 working_dir=self.config.RAG_WORKING_DIR,
-                llm_model_func=openai_complete_if_cache,
-                embedding_func=openai_embedding,
+                llm_model_func=self.lightrag_llm_wrapper,
+                embedding_func=openai_embed,
+                llm_model_name="gpt-4o-mini",
+                llm_model_kwargs={
+                    "api_key": self.config.OPENAI_API_KEY
+                }
             )
             await self.rag.initialize_storages()
+            await initialize_pipeline_status()
             print("✓ LightRAG initialized successfully")
             return True
         except Exception as e:
