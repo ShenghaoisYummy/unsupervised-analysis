@@ -1,0 +1,13 @@
+lightrag-hku
+openai
+python-docx
+pandoc
+numpy
+scikit-learn
+matplotlib
+seaborn
+plotly
+asyncio
+aiofiles
+python-dotenv
+tqdm
